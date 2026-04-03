@@ -77,20 +77,36 @@ QUICKBOX_SNAPSHOT = [
 ]
 
 
+EXTRA_CHANNELS = [
+    ("Amazon FBA",  "Amazon FBA Warehouse"),
+    ("TikTok FBT",  "TikTok Warehouse"),
+]
+
+
 def get_mock_df() -> pd.DataFrame:
     now = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0).isoformat()
-    rows = [
-        {
-            "id":           i + 1,
-            "source":       "LogicPod / QuickBox",
-            "sku":          sku,
-            "product_name": name,
-            "quantity":     qty,
-            "location":     "QuickBox Warehouse",
-            "scraped_at":   now,
-        }
-        for i, (sku, name, qty) in enumerate(QUICKBOX_SNAPSHOT)
-    ]
+    rows = []
+    _id = 1
+
+    # QuickBox — real quantities
+    for sku, name, qty in QUICKBOX_SNAPSHOT:
+        rows.append({
+            "id": _id, "source": "LogicPod / QuickBox",
+            "sku": sku, "product_name": name,
+            "quantity": qty, "location": "QuickBox Warehouse", "scraped_at": now,
+        })
+        _id += 1
+
+    # Amazon & TikTok — same SKUs, quantity 0 (not connected yet)
+    for source, location in EXTRA_CHANNELS:
+        for sku, name, _ in QUICKBOX_SNAPSHOT:
+            rows.append({
+                "id": _id, "source": source,
+                "sku": sku, "product_name": name,
+                "quantity": 0, "location": location, "scraped_at": now,
+            })
+            _id += 1
+
     df = pd.DataFrame(rows)
     df["scraped_at"] = pd.to_datetime(df["scraped_at"], utc=True)
     df["date"] = df["scraped_at"].dt.date
