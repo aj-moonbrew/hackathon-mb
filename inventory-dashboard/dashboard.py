@@ -170,40 +170,36 @@ if USING_MOCK:
 st.divider()
 
 # ---------------------------------------------------------------------------
-# Filters — horizontal row at the top
+# Filters — horizontal dropdowns at the top (no tag pills shown)
 # ---------------------------------------------------------------------------
 
-all_sources = sorted(df["source"].dropna().unique().tolist())
-
-# SKU options: real data SKUs if available, otherwise all mock SKUs
-sku_options = real_skus if real_skus else sorted(df["sku"].dropna().unique().tolist())
+all_sources  = sorted(df["source"].dropna().unique().tolist())
+# Always use real QuickBox SKUs; fall back to mock SKUs only if no real data
+sku_options  = real_skus if real_skus else sorted(df["sku"].dropna().unique().tolist())
 
 min_date = df["date"].min() if "date" in df.columns else date.today()
 max_date = df["date"].max() if "date" in df.columns else date.today()
 
 with st.container():
     st.markdown('<div class="filter-card">', unsafe_allow_html=True)
-    fc1, fc2, fc3, fc4 = st.columns([1.5, 2.5, 1, 1])
+    fc1, fc2, fc3, fc4 = st.columns([1.5, 2, 1, 1])
     with fc1:
-        selected_sources = st.multiselect("🏪 Channel", all_sources, default=all_sources, placeholder="All channels")
+        sel_channel = st.selectbox("🏪 Channel", ["All channels"] + all_sources)
     with fc2:
-        selected_skus = st.multiselect(
-            "🔖 SKU",
-            sku_options,
-            default=sku_options,
-            placeholder="All SKUs",
-            help="Showing SKUs from your uploaded QuickBox data" if real_skus else "Showing sample SKUs",
-        )
+        sel_sku = st.selectbox("🔖 SKU", ["All SKUs"] + sku_options)
     with fc3:
         start_date = st.date_input("📅 From", value=min_date, min_value=min_date, max_value=max_date)
     with fc4:
         end_date = st.date_input("📅 To", value=max_date, min_value=min_date, max_value=max_date)
     st.markdown('</div>', unsafe_allow_html=True)
 
-# Apply filters — when using mock, filter on all SKUs since real_skus is empty
-filter_skus = selected_skus if selected_skus else sku_options
+# Resolve selections
+selected_sources = all_sources         if sel_channel == "All channels" else [sel_channel]
+filter_skus      = sku_options         if sel_sku     == "All SKUs"     else [sel_sku]
+
+# Apply filters — always match SKUs against the real QuickBox SKU list
 mask = (
-    df["source"].isin(selected_sources if selected_sources else all_sources)
+    df["source"].isin(selected_sources)
     & df["sku"].isin(filter_skus)
     & (df["date"] >= start_date)
     & (df["date"] <= end_date)
