@@ -379,7 +379,7 @@ sku_channel = (
 fig = px.bar(
     sku_channel, x="quantity", y="sku", color="source",
     barmode="group", orientation="h",
-    color="source", color_discrete_map=color_map,
+    color_discrete_map=color_map,
     labels={"sku": "", "quantity": "Units on Hand", "source": "Channel"},
     height=max(420, len(sku_channel["sku"].unique()) * 26),
 )
