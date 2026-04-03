@@ -6,6 +6,7 @@ from datetime import date
 
 import config
 from database import export_excel
+from mock_data import get_mock_df
 
 # Scraping requires Playwright + Chromium — available locally but not on Streamlit Cloud.
 try:
@@ -113,11 +114,15 @@ with col_title:
     st.title("📦 Channel Inventory Dashboard")
 
 df = load_data()
+USING_MOCK = df.empty
+
+if USING_MOCK:
+    df = get_mock_df()
 
 last_scrape = (
     df["scraped_at"].max().strftime("%Y-%m-%d %H:%M UTC")
-    if not df.empty and "scraped_at" in df.columns
-    else "Never"
+    if not USING_MOCK and "scraped_at" in df.columns
+    else "Never — showing sample data"
 )
 st.caption(f"Last scrape: **{last_scrape}**")
 
@@ -138,7 +143,7 @@ with col_btn1:
         st.button("🔄 Scrape now", disabled=True, use_container_width=True, help="Run `python scraper.py` locally — Playwright is not available in this environment.")
 
 with col_btn2:
-    if not df.empty:
+    if not USING_MOCK:
         filepath = export_excel()
         with open(filepath, "rb") as f:
             st.download_button(
@@ -149,24 +154,20 @@ with col_btn2:
                 use_container_width=True,
             )
     else:
-        st.button("📥 Export Excel", disabled=True, use_container_width=True)
+        st.button("📥 Export Excel", disabled=True, use_container_width=True,
+                  help="Export is available once real data has been scraped.")
 
-if not SCRAPING_AVAILABLE:
-    st.info("ℹ️ Scraping is disabled in this environment. Run `python scraper.py` locally to populate data, then redeploy or refresh.", icon="ℹ️")
+if USING_MOCK:
+    st.info(
+        "👋 **This is a preview using sample data.** "
+        "Once your API credentials are set up, click **🔄 Scrape now** (or run `python scraper.py`) "
+        "to load your real inventory.",
+        icon="ℹ️",
+    )
+elif not SCRAPING_AVAILABLE:
+    st.info("ℹ️ Scraping is disabled in this environment. Run `python scraper.py` locally to refresh data.", icon="ℹ️")
 
 st.divider()
-
-# ---------------------------------------------------------------------------
-# Guard — no data yet
-# ---------------------------------------------------------------------------
-
-if df.empty:
-    st.warning(
-        "No inventory data found yet. "
-        "Run **`python scraper.py`** locally to pull data from all three platforms.",
-        icon="⚠️",
-    )
-    st.stop()
 
 # ---------------------------------------------------------------------------
 # Sidebar filters
