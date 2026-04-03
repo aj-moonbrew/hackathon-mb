@@ -3,3 +3,5 @@ pandas
 openpyxl
 streamlit
 plotly
+fastapi
+uvicorn[standard]
