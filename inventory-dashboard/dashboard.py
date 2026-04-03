@@ -2,6 +2,7 @@ import sqlite3
 import pandas as pd
 import streamlit as st
 import plotly.express as px
+import plotly.graph_objects as go
 from datetime import date
 
 import config
@@ -19,66 +20,192 @@ except Exception:
 # ---------------------------------------------------------------------------
 
 st.set_page_config(
-    page_title="Inventory Dashboard",
+    page_title="MoonBrew · Inventory",
     layout="wide",
-    page_icon="📦",
+    page_icon="🌙",
 )
 
 # ---------------------------------------------------------------------------
-# CSS — dark mode safe (no hardcoded light colors)
+# MoonBrew brand tokens
 # ---------------------------------------------------------------------------
 
-st.markdown("""
+BG           = "#141414"
+BG2          = "#1c1c1c"
+BG3          = "#242424"
+BORDER       = "#2e2e2e"
+PURPLE       = "#3D35A8"
+PURPLE_LIGHT = "#5548C8"
+TEXT         = "#e2e2e2"
+TEXT_MUTED   = "#6b7280"
+WHITE        = "#ffffff"
+
+# Channel colors
+CHANNEL_COLORS = {
+    "LogicPod / QuickBox": "#3D35A8",
+    "Amazon FBA":           "#f59e0b",
+    "TikTok FBT":           "#e63950",
+}
+COLOR_SEQ = list(CHANNEL_COLORS.values())
+
+# ---------------------------------------------------------------------------
+# MoonBrew CSS
+# ---------------------------------------------------------------------------
+
+st.markdown(f"""
 <style>
-    /* Remove top padding */
-    .block-container { padding-top: 1.5rem !important; }
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 
-    /* Metric cards — use transparent bg + subtle border that works in both modes */
-    [data-testid="metric-container"] {
-        border: 1px solid rgba(128,128,128,0.2);
-        border-radius: 14px;
-        padding: 18px 22px !important;
-        box-shadow: 0 1px 4px rgba(0,0,0,0.08);
-    }
-    [data-testid="metric-container"] label {
-        font-size: 11px !important;
-        font-weight: 700 !important;
-        text-transform: uppercase;
-        letter-spacing: 0.06em;
-        opacity: 0.6;
-    }
-    [data-testid="metric-container"] [data-testid="metric-value"] {
-        font-size: 26px !important;
-        font-weight: 800 !important;
-    }
+  /* ── Base ── */
+  html, body, [class*="css"], .stApp {{
+    font-family: 'Inter', sans-serif !important;
+    background-color: {BG} !important;
+    color: {TEXT} !important;
+  }}
+  .block-container {{ padding-top: 1.8rem !important; max-width: 1400px; }}
 
-    /* Filter section card */
-    .filter-card {
-        border: 1px solid rgba(128,128,128,0.2);
-        border-radius: 14px;
-        padding: 16px 20px;
-        margin-bottom: 1rem;
-        box-shadow: 0 1px 4px rgba(0,0,0,0.06);
-    }
+  /* ── Logo / title bar ── */
+  .mb-header {{
+    display: flex; align-items: center; gap: 12px; margin-bottom: 2px;
+  }}
+  .mb-logo {{
+    width: 36px; height: 36px; border-radius: 10px;
+    background: {PURPLE};
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px; line-height: 1;
+  }}
+  .mb-title {{
+    font-size: 22px; font-weight: 800; color: {WHITE}; letter-spacing: -0.3px;
+  }}
+  .mb-subtitle {{
+    font-size: 13px; color: {TEXT_MUTED}; margin-top: 1px;
+  }}
 
-    /* Buttons */
-    .stButton > button, .stDownloadButton > button {
-        border-radius: 10px !important;
-        font-weight: 600 !important;
-        font-size: 13px !important;
-        padding: 0.4rem 1rem !important;
-    }
+  /* ── Cards (metrics) ── */
+  [data-testid="metric-container"] {{
+    background: {BG2} !important;
+    border: 1px solid {BORDER} !important;
+    border-radius: 14px !important;
+    padding: 18px 22px !important;
+  }}
+  [data-testid="metric-container"] label {{
+    font-size: 11px !important; font-weight: 700 !important;
+    text-transform: uppercase; letter-spacing: 0.07em;
+    color: {TEXT_MUTED} !important;
+  }}
+  [data-testid="metric-container"] [data-testid="metric-value"] {{
+    font-size: 28px !important; font-weight: 800 !important;
+    color: {WHITE} !important;
+  }}
 
-    /* Dividers */
-    hr { opacity: 0.2 !important; }
+  /* ── Filter strip ── */
+  .filter-strip {{
+    background: {BG2};
+    border: 1px solid {BORDER};
+    border-radius: 14px;
+    padding: 14px 20px 10px 20px;
+    margin-bottom: 1.4rem;
+  }}
 
-    /* Tighten multiselect tags */
-    [data-testid="stMultiSelect"] span[data-baseweb="tag"] {
-        border-radius: 6px !important;
-        font-size: 12px !important;
-    }
+  /* ── Chart wrapper ── */
+  [data-testid="stPlotlyChart"] {{
+    background: {BG2} !important;
+    border: 1px solid {BORDER} !important;
+    border-radius: 14px !important;
+    padding: 8px !important;
+  }}
+
+  /* ── Buttons ── */
+  .stButton > button {{
+    background: {PURPLE} !important;
+    color: {WHITE} !important;
+    border: none !important;
+    border-radius: 10px !important;
+    font-weight: 600 !important;
+    font-size: 13px !important;
+    padding: 0.45rem 1.1rem !important;
+    transition: background .2s;
+  }}
+  .stButton > button:hover {{ background: {PURPLE_LIGHT} !important; }}
+  .stButton > button:disabled {{
+    background: {BG3} !important;
+    color: {TEXT_MUTED} !important;
+    border: 1px solid {BORDER} !important;
+  }}
+  .stDownloadButton > button {{
+    background: transparent !important;
+    color: {TEXT} !important;
+    border: 1px solid {BORDER} !important;
+    border-radius: 10px !important;
+    font-weight: 600 !important; font-size: 13px !important;
+  }}
+  .stDownloadButton > button:hover {{ border-color: {PURPLE} !important; color: {WHITE} !important; }}
+
+  /* ── Sidebar hidden ── */
+  [data-testid="stSidebar"] {{ display: none; }}
+
+  /* ── Selectbox ── */
+  [data-testid="stSelectbox"] > div > div {{
+    background: {BG3} !important;
+    border: 1px solid {BORDER} !important;
+    border-radius: 10px !important;
+    color: {TEXT} !important;
+  }}
+
+  /* ── Date inputs ── */
+  [data-testid="stDateInput"] input {{
+    background: {BG3} !important;
+    border: 1px solid {BORDER} !important;
+    border-radius: 10px !important;
+    color: {TEXT} !important;
+  }}
+
+  /* ── Divider ── */
+  hr {{ border-color: {BORDER} !important; opacity: 1 !important; }}
+
+  /* ── Dataframe ── */
+  [data-testid="stDataFrame"] {{ border-radius: 14px; overflow: hidden; }}
+  [data-testid="stDataFrame"] th {{
+    background: {BG3} !important; color: {TEXT_MUTED} !important;
+    font-size: 11px !important; font-weight: 700 !important; text-transform: uppercase;
+    letter-spacing: 0.06em !important;
+  }}
+
+  /* ── Info / warning banners ── */
+  [data-testid="stAlert"] {{
+    background: {BG2} !important;
+    border: 1px solid {BORDER} !important;
+    border-radius: 12px !important;
+    color: {TEXT} !important;
+  }}
+
+  /* ── Section labels ── */
+  .section-label {{
+    font-size: 11px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.08em; color: {TEXT_MUTED}; margin-bottom: 10px;
+  }}
 </style>
 """, unsafe_allow_html=True)
+
+# ---------------------------------------------------------------------------
+# Plotly dark chart helper
+# ---------------------------------------------------------------------------
+
+def mb_chart(fig, title=""):
+    fig.update_layout(
+        title=dict(text=title, font=dict(size=14, weight="bold", color=WHITE), x=0, pad=dict(l=6)),
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)",
+        margin=dict(t=48, b=8, l=4, r=4),
+        font=dict(family="Inter, sans-serif", color=TEXT, size=12),
+        xaxis=dict(showgrid=False, showline=False, tickcolor=TEXT_MUTED, color=TEXT_MUTED),
+        yaxis=dict(gridcolor=BORDER, showline=False, tickcolor=TEXT_MUTED, color=TEXT_MUTED),
+        legend=dict(
+            orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1,
+            font=dict(size=12, color=TEXT), bgcolor="rgba(0,0,0,0)", borderwidth=0,
+        ),
+        hoverlabel=dict(bgcolor=BG3, font_color=WHITE, bordercolor=BORDER),
+    )
+    return fig
 
 # ---------------------------------------------------------------------------
 # Data loader
@@ -98,61 +225,49 @@ def load_data() -> pd.DataFrame:
     return df
 
 # ---------------------------------------------------------------------------
-# Plotly chart helper — transparent bg, works in light + dark
+# Load + fallback to mock
 # ---------------------------------------------------------------------------
 
-CHANNEL_COLORS = ["#f59e0b", "#6366f1", "#10b981", "#4f6ef7", "#f43f5e", "#06b6d4"]
-
-def apply_transparent_layout(fig, title=""):
-    fig.update_layout(
-        title=dict(text=title, font=dict(size=14, weight="bold")),
-        plot_bgcolor="rgba(0,0,0,0)",
-        paper_bgcolor="rgba(0,0,0,0)",
-        margin=dict(t=44, b=8, l=4, r=4),
-        xaxis=dict(showgrid=False, showline=False),
-        yaxis=dict(gridcolor="rgba(128,128,128,0.15)", showline=False),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, font=dict(size=12)),
-        font=dict(size=12),
-    )
-    return fig
-
-# ---------------------------------------------------------------------------
-# Load data
-# ---------------------------------------------------------------------------
-
-real_df   = load_data()
+real_df    = load_data()
 USING_MOCK = real_df.empty
 df         = get_mock_df() if USING_MOCK else real_df
-
-# SKU options always come from real data (DB); mock SKUs are never shown in filter
-real_skus = sorted(real_df["sku"].dropna().unique().tolist()) if not USING_MOCK else []
+real_skus  = sorted(real_df["sku"].dropna().unique().tolist()) if not USING_MOCK else []
+sku_options = real_skus if real_skus else sorted(df["sku"].dropna().unique().tolist())
 
 # ---------------------------------------------------------------------------
 # Header
 # ---------------------------------------------------------------------------
 
 h_left, h_right = st.columns([4, 2])
+
 with h_left:
-    st.title("📦 Channel Inventory Dashboard")
     last_scrape = (
-        df["scraped_at"].max().strftime("%b %d, %Y %H:%M UTC")
-        if not USING_MOCK else "Showing sample data — no scrape run yet"
+        df["scraped_at"].max().strftime("%b %d, %Y · %H:%M UTC")
+        if not USING_MOCK else "No scrape yet — showing QuickBox snapshot"
     )
-    st.caption(f"Last updated: **{last_scrape}**")
+    st.markdown(f"""
+    <div class="mb-header">
+      <div class="mb-logo">🌙</div>
+      <div>
+        <div class="mb-title">MoonBrew Inventory</div>
+        <div class="mb-subtitle">Last updated: {last_scrape}</div>
+      </div>
+    </div>
+    """, unsafe_allow_html=True)
 
 with h_right:
-    st.write("")  # vertical spacing
+    st.write("")
     b1, b2 = st.columns(2)
     with b1:
         if SCRAPING_AVAILABLE:
-            if st.button("🔄 Scrape", use_container_width=True):
-                with st.spinner("Scraping… browser windows will open."):
+            if st.button("🔄 Scrape now", use_container_width=True):
+                with st.spinner("Opening browsers…"):
                     run_scrape()
                 st.cache_data.clear()
                 st.rerun()
         else:
-            st.button("🔄 Scrape", disabled=True, use_container_width=True,
-                      help="Run `python scraper.py` locally — Playwright unavailable here.")
+            st.button("🔄 Scrape now", disabled=True, use_container_width=True,
+                      help="Run `python scraper.py` locally.")
     with b2:
         if not USING_MOCK:
             fp = export_excel()
@@ -162,42 +277,36 @@ with h_right:
                     use_container_width=True)
         else:
             st.button("📥 Export", disabled=True, use_container_width=True,
-                      help="Available after first real scrape.")
+                      help="Available after first scrape.")
 
 if USING_MOCK:
-    st.info("👋 **Preview mode — sample data.** Fill in your API credentials and click Scrape to load real inventory.", icon="ℹ️")
+    st.info("👋 Showing your QuickBox snapshot. Connect Amazon & TikTok APIs and click **Scrape now** to populate all channels.", icon="🌙")
 
 st.divider()
 
 # ---------------------------------------------------------------------------
-# Filters — horizontal dropdowns at the top (no tag pills shown)
+# Filters — horizontal strip
 # ---------------------------------------------------------------------------
 
-all_sources  = sorted(df["source"].dropna().unique().tolist())
-# Always use real QuickBox SKUs; fall back to mock SKUs only if no real data
-sku_options  = real_skus if real_skus else sorted(df["sku"].dropna().unique().tolist())
+all_sources = sorted(df["source"].dropna().unique().tolist())
+min_date    = df["date"].min() if "date" in df.columns else date.today()
+max_date    = df["date"].max() if "date" in df.columns else date.today()
 
-min_date = df["date"].min() if "date" in df.columns else date.today()
-max_date = df["date"].max() if "date" in df.columns else date.today()
+st.markdown('<div class="filter-strip">', unsafe_allow_html=True)
+fc1, fc2, fc3, fc4 = st.columns([1.5, 2, 1, 1])
+with fc1:
+    sel_channel = st.selectbox("🏪 Channel", ["All channels"] + all_sources, label_visibility="visible")
+with fc2:
+    sel_sku = st.selectbox("🔖 SKU", ["All SKUs"] + sku_options, label_visibility="visible")
+with fc3:
+    start_date = st.date_input("📅 From", value=min_date, min_value=min_date, max_value=max_date)
+with fc4:
+    end_date = st.date_input("📅 To", value=max_date, min_value=min_date, max_value=max_date)
+st.markdown('</div>', unsafe_allow_html=True)
 
-with st.container():
-    st.markdown('<div class="filter-card">', unsafe_allow_html=True)
-    fc1, fc2, fc3, fc4 = st.columns([1.5, 2, 1, 1])
-    with fc1:
-        sel_channel = st.selectbox("🏪 Channel", ["All channels"] + all_sources)
-    with fc2:
-        sel_sku = st.selectbox("🔖 SKU", ["All SKUs"] + sku_options)
-    with fc3:
-        start_date = st.date_input("📅 From", value=min_date, min_value=min_date, max_value=max_date)
-    with fc4:
-        end_date = st.date_input("📅 To", value=max_date, min_value=min_date, max_value=max_date)
-    st.markdown('</div>', unsafe_allow_html=True)
+selected_sources = all_sources  if sel_channel == "All channels" else [sel_channel]
+filter_skus      = sku_options  if sel_sku     == "All SKUs"     else [sel_sku]
 
-# Resolve selections
-selected_sources = all_sources         if sel_channel == "All channels" else [sel_channel]
-filter_skus      = sku_options         if sel_sku     == "All SKUs"     else [sel_sku]
-
-# Apply filters — always match SKUs against the real QuickBox SKU list
 mask = (
     df["source"].isin(selected_sources)
     & df["sku"].isin(filter_skus)
@@ -214,15 +323,15 @@ latest_ts       = df["scraped_at"].max()
 latest_snapshot = df[df["scraped_at"] == latest_ts]
 
 k1, k2, k3, k4 = st.columns(4)
-k1.metric("Total Units on Hand",   f"{int(latest_snapshot['quantity'].sum()):,}")
-k2.metric("SKUs Tracked",          f"{len(sku_options):,}")
-k3.metric("Channels",              df["source"].nunique())
-k4.metric("Snapshots",             df["scraped_at"].nunique())
+k1.metric("Total Units on Hand",  f"{int(latest_snapshot['quantity'].sum()):,}")
+k2.metric("SKUs Tracked",         f"{len(sku_options):,}")
+k3.metric("Channels",             df["source"].nunique())
+k4.metric("Snapshots Taken",      df["scraped_at"].nunique())
 
 st.divider()
 
 # ---------------------------------------------------------------------------
-# Charts row 1 — By Channel bar + Donut
+# Charts row 1 — By Channel + Donut
 # ---------------------------------------------------------------------------
 
 latest_filtered = filtered[filtered["scraped_at"] == filtered["scraped_at"].max()]
@@ -231,28 +340,34 @@ channel_totals  = latest_filtered.groupby("source", as_index=False)["quantity"].
 c1, c2 = st.columns(2)
 
 with c1:
+    color_map = {s: CHANNEL_COLORS.get(s, PURPLE) for s in channel_totals["source"]}
     fig = px.bar(
         channel_totals, x="source", y="quantity", color="source",
-        color_discrete_sequence=CHANNEL_COLORS, text_auto=True,
-        labels={"source": "Channel", "quantity": "Units"},
+        color_discrete_map=color_map, text_auto=True,
+        labels={"source": "", "quantity": "Units"},
     )
-    fig.update_traces(marker_line_width=0, textposition="outside", textfont_size=12)
+    fig.update_traces(marker_line_width=0, textposition="outside",
+                      textfont=dict(color=TEXT, size=12))
     fig.update_layout(showlegend=False)
-    apply_transparent_layout(fig, "Current stock by channel")
+    mb_chart(fig, "Units on hand by channel")
     st.plotly_chart(fig, use_container_width=True)
 
 with c2:
     fig = px.pie(
-        channel_totals, names="source", values="quantity",
-        hole=0.48, color_discrete_sequence=CHANNEL_COLORS,
+        channel_totals, names="source", values="quantity", hole=0.52,
+        color="source", color_discrete_map=color_map,
     )
-    fig.update_traces(textposition="inside", textinfo="percent+label", textfont_size=12)
-    apply_transparent_layout(fig, "Stock split by channel")
+    fig.update_traces(
+        textposition="inside", textinfo="percent+label",
+        textfont=dict(size=12, color=WHITE),
+        marker=dict(line=dict(color=BG, width=2)),
+    )
+    mb_chart(fig, "Channel distribution")
     fig.update_layout(showlegend=False)
     st.plotly_chart(fig, use_container_width=True)
 
 # ---------------------------------------------------------------------------
-# Chart 2 — By SKU & channel (horizontal bar for readability with many SKUs)
+# Chart 2 — By SKU (horizontal bar)
 # ---------------------------------------------------------------------------
 
 sku_channel = (
@@ -264,28 +379,31 @@ sku_channel = (
 fig = px.bar(
     sku_channel, x="quantity", y="sku", color="source",
     barmode="group", orientation="h",
-    color_discrete_sequence=CHANNEL_COLORS,
-    labels={"sku": "SKU", "quantity": "Units", "source": "Channel"},
-    height=max(400, len(sku_channel["sku"].unique()) * 28),
+    color="source", color_discrete_map=color_map,
+    labels={"sku": "", "quantity": "Units on Hand", "source": "Channel"},
+    height=max(420, len(sku_channel["sku"].unique()) * 26),
 )
 fig.update_traces(marker_line_width=0)
-apply_transparent_layout(fig, "Current stock by SKU & channel")
-fig.update_layout(yaxis=dict(showgrid=False), xaxis=dict(gridcolor="rgba(128,128,128,0.15)"))
+mb_chart(fig, "Stock by SKU & channel")
+fig.update_layout(
+    yaxis=dict(showgrid=False, tickfont=dict(size=11)),
+    xaxis=dict(gridcolor=BORDER),
+)
 st.plotly_chart(fig, use_container_width=True)
 
 # ---------------------------------------------------------------------------
-# Chart 3 — Time series (only when multiple snapshots exist)
+# Chart 3 — Time series
 # ---------------------------------------------------------------------------
 
 if df["scraped_at"].nunique() > 1:
     ts_df = filtered.groupby(["scraped_at", "source"], as_index=False)["quantity"].sum()
     fig = px.line(
         ts_df, x="scraped_at", y="quantity", color="source",
-        color_discrete_sequence=CHANNEL_COLORS, markers=True,
-        labels={"scraped_at": "Date", "quantity": "Total units", "source": "Channel"},
+        color_discrete_map=color_map, markers=True,
+        labels={"scraped_at": "", "quantity": "Total Units", "source": "Channel"},
     )
     fig.update_traces(line_width=2.5, marker_size=6)
-    apply_transparent_layout(fig, "Inventory over time by channel")
+    mb_chart(fig, "Inventory over time")
     st.plotly_chart(fig, use_container_width=True)
 
 st.divider()
@@ -294,18 +412,18 @@ st.divider()
 # Raw data table
 # ---------------------------------------------------------------------------
 
-st.subheader(f"Inventory records  ·  {len(filtered):,} rows")
+st.markdown(f'<div class="section-label">Inventory records &nbsp;·&nbsp; {len(filtered):,} rows</div>', unsafe_allow_html=True)
 display_cols = ["scraped_at", "source", "sku", "product_name", "quantity", "location"]
 st.dataframe(
     filtered[display_cols].sort_values("scraped_at", ascending=False),
     use_container_width=True,
     hide_index=True,
     column_config={
-        "scraped_at":   st.column_config.DatetimeColumn("Scraped at",  format="MMM D YYYY, HH:mm"),
-        "source":       st.column_config.TextColumn("Channel",         width="medium"),
-        "sku":          st.column_config.TextColumn("SKU",             width="medium"),
-        "product_name": st.column_config.TextColumn("Product",         width="large"),
-        "quantity":     st.column_config.NumberColumn("Qty on Hand",   format="%d"),
-        "location":     st.column_config.TextColumn("Location",        width="medium"),
+        "scraped_at":   st.column_config.DatetimeColumn("Scraped at",   format="MMM D YYYY, HH:mm"),
+        "source":       st.column_config.TextColumn("Channel",          width="medium"),
+        "sku":          st.column_config.TextColumn("SKU",              width="medium"),
+        "product_name": st.column_config.TextColumn("Product",          width="large"),
+        "quantity":     st.column_config.NumberColumn("Qty on Hand",    format="%d"),
+        "location":     st.column_config.TextColumn("Location",         width="medium"),
     },
 )
